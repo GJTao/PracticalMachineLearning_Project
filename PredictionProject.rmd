@@ -1,0 +1,127 @@
+---
+title: "Practical Machine Learning Project: Predict Exercise Performance Using Human Activity Recognition Data"
+author: "J. T."
+date: "April 2, 2016"
+output: 
+   html_document:
+     fig_width: 10
+     highlight: tango
+     keep_md: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+###Summary
+This project is to use human activity recogtnition data collected by werable  accelerometers to predict the manner in which subjects did their exercises. Six participants performed barbell lifts correctly and incorrectly in 5 different ways (graded as A - F) with accelerometers placed on their belt, forearm, arm, and dumbell. More information is available from the [website](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
+
+Two machine learning algorithm: Decision Tree and Random Forest, are used to fit the data. Random Foreset algorithm build the model with accuracy >99% in cross validation and successfully predict the test data.
+
+###Loading and Cleaning-up Data
+The training data available  [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) are used to develop and validate the machine learning algorithm. The test data available  [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv) have 20 cases, which are used to complete project quiz. The training data has 19622 observations and 160 columns. A lot of columns have high portions of NA's as the following example. Therefore, the numbers of NAs are calculated for all the columns and any columns with over 50% NAs are removed from the dataset.   
+```{r loaddata, cache=TRUE}
+train_url <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training_raw <- read.csv(train_url, na.strings=c("NA","#DIV/0!",""))
+test <- read.csv(test_url, na.strings=c("NA","#DIV/0!",""))
+```
+```{r datasummary1}
+summary(training_raw[, 12:17])
+```
+
+Sixty columns with less than 50% NAs are listed in the following table. As shown in the table, the first seven columns are not related to the activity measurements so also removed from the dataset. The dataset actually used for developing machine learning algorithm has 53 variables including the response variable "classe" and 52 features.
+```{r cleandata1, warning=FALSE, message=FALSE}
+library(dplyr)
+#remove variables with >60% NA
+na_count <- data.frame(sapply(training_raw, function(x) sum(is.na(x))/length(x)>0.5))
+na_count <- add_rownames(na_count, "variables")
+colnames(na_count)[2] <- "remove"
+collist <- na_count[na_count$remove == FALSE,]
+collist$variable
+
+collist <- collist[-(1:7),]
+training_pro <- training_raw[,collist$variable]
+```
+
+###Developing Algorithm
+
+####Preparing Data
+```{r dataprepare, results="hide", warning=FALSE, message=FALSE}
+library(caret)
+set.seed(1234)
+inTrain <- createDataPartition(y=training_pro$classe, p=0.6, list=FALSE)
+mytraining <- training_pro[inTrain,]
+mytesting <- training_pro[-inTrain,]
+trainobs <- dim(mytraining)[1]; testobs <- dim(mytesting)[1]
+```
+
+The data are splitted into my training data (60% of the processed training data, `r trainobs` observations) for building models and my testing data(40% of the processed training data, `r testobs` observations) for cross validation. The variables are checked for "zero variance". As the following results showed, all the variables have variance larger than 0. 
+
+```{r}
+nsv <- nearZeroVar(mytraining[,-53], saveMetrics=TRUE)
+nsv
+```
+
+The features plots grouped by the locations of accelerometers show that different variables have quite different ranges. Since Decision Tree and Random Forest alogrithms are going to be applied in this project, standardizing data is not necessary. 
+
+* Belt
+```{r beltplot, cache=TRUE}
+featurePlot(x=mytraining[,1:13], y=mytraining$classe, plots="pairs")
+```
+
+* Arm
+```{r armplot, cache=TRUE}
+featurePlot(x=mytraining[,14:26], y=mytraining$classe, plots="pairs")
+```
+
+* Dumbell
+```{r bellplot, cache=TRUE}
+featurePlot(x=mytraining[,27:39], y=mytraining$classe, plots="pairs")
+```
+
+* Forearm
+```{r farmplot, cache=TRUE}
+featurePlot(x=mytraining[,40:52], y=mytraining$classe, plots="pairs")
+```
+
+####Decision Tree Algorithm
+
+Decision Tree is firstly applied to train my training data. The final model of this algorithm is used to fit my testing data and the resutls are:  
+```{r rpart, cache=TRUE}
+set.seed(1234)
+mod_rpart <- train(classe~., data=mytraining, method="rpart")
+pred_rpart <- predict(mod_rpart, mytesting)
+confusionMatrix(pred_rpart, mytesting$classe)
+AccuracyT <-round(confusionMatrix(pred_rpart, mytesting$classe)$overall['Accuracy'], 3)
+```
+
+The accuracy is only `r AccuracyT`.
+
+
+####Random Forest Algorithm
+```{r rf, cache=TRUE, warning=FALSE, message=FALSE}
+set.seed(1234)
+mod_rf <- train(classe~., data=mytraining, method="rf", 
+                trControl=trainControl(method="cv",number=5),
+                prox=TRUE, allowParallel=TRUE)
+```
+
+Random Forest is then used to train the data. The final model of this algorithm is to fit my testing data and the results are:
+```{r rfvalidate}
+pred_rf <- predict(mod_rf, mytesting)
+confusionMatrix(pred_rf, mytesting$classe)
+AccuracyRF <-round(confusionMatrix(pred_rf, mytesting$classe)$overall['Accuracy'], 3)
+```
+
+The final model is validated in my testing data with accuracy `r AccuracyRF`. Out-of-sample error is less than 1%, which is very low. This model is accepted.
+
+###Predict Test Data
+The validated final model is used to predict "classe"" of the test data and the results are:
+```{r testpred}
+test_col <- collist[-53,]
+test_pro <- test[,test_col$variable]
+predict(mod_rf, test_pro)
+```
+
+The results are all correct according to the grade of project quiz. Therefore, the final model is successful.
