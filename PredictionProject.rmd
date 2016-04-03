@@ -33,13 +33,13 @@ summary(training_raw[, 12:17])
 Sixty columns with less than 50% NAs are listed in the following table. As shown in the table, the first seven columns are not related to the activity measurements so also removed from the dataset. The dataset actually used for developing machine learning algorithm has 53 variables including the response variable "classe" and 52 features.
 ```{r cleandata1, warning=FALSE, message=FALSE}
 library(dplyr)
-#remove variables with >60% NA
+#remove variables with >50% NA
 na_count <- data.frame(sapply(training_raw, function(x) sum(is.na(x))/length(x)>0.5))
 na_count <- add_rownames(na_count, "variables")
 colnames(na_count)[2] <- "remove"
 collist <- na_count[na_count$remove == FALSE,]
 collist$variable
-
+#remove first 7 variables
 collist <- collist[-(1:7),]
 training_pro <- training_raw[,collist$variable]
 ```
